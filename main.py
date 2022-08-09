@@ -16,6 +16,7 @@ session = vk_api.VkApi(token=vk_api_token)
 vk_last_post_dict_id = {}
 
 def main():
+
     @bot.message_handler(commands=['start', 'go'])
     def init_user(message):
         bot.send_message(message.chat.id, f'Приветствую')
@@ -88,8 +89,10 @@ def main():
                     vk_last_post_dict_id[vk_user_group] = vk_last_post['id']
                 if parse:
                     vk_posts[vk_user_group] = vk_last_post
+        time.sleep(10)
         return vk_posts
-    @bot.message_handler(commands=['test'])
+
+    @bot.message_handler()
     def vk_parse_group_posts(message):
         vk_get_last_post(message, get_last_post_id=True, parse=False)
         while True:
@@ -102,6 +105,7 @@ def main():
                     contains_photo = False
                     contains_video = False
                     contains_link = False
+                    print(vk_group_post)
                     attachments_last_post = vk_group_post['attachments']
 
                     for attachment in attachments_last_post:
@@ -132,7 +136,7 @@ def main():
                         #     vk_video_url = f'https://vk.com/video-{owner_id}_{videos}'
                         #     vk_video_path = f'temp/videos/{owner_id}_{videos}_{access_key}.mp4'
                         #     contains_video = True
-
+                    print(vk_last_post_dict_id[vk_user_group], vk_group_post['id'])
                     if vk_last_post_dict_id[vk_user_group] < vk_group_post['id']:
                         if contains_photo:
                             bot.send_media_group(message.chat.id, all_photos)
@@ -147,7 +151,6 @@ def main():
                     if vk_last_post_dict_id[vk_user_group] < vk_group_post['id']:
                         bot.send_message(message.chat.id, f'{vk_group_post["text"]}')
                         vk_last_post_dict_id[vk_user_group] = vk_group_post['id']
-            time.sleep(90)
             print(1)
     bot.polling()
 

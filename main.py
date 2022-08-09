@@ -147,8 +147,8 @@ def main():
                     if vk_last_post_dict_id[vk_user_group] < vk_group_post['id']:
                         bot.send_message(message.chat.id, f'{vk_group_post["text"]}')
                         vk_last_post_dict_id[vk_user_group] = vk_group_post['id']
-    time.sleep(90)
-    print(1)
+            time.sleep(90)
+            print(1)
     bot.polling()
 
 

@@ -33,6 +33,9 @@ def main():
                 try:
                     with sqlite3.connect(db_path) as db:
                         cursor = db.cursor()
+                        db.execute('SET NAMES utf8;')
+                        db.execute('SET CHARACTER SET utf8;')
+                        db.execute('SET character_set_connection=utf8;')
                         add_telegram_user = f"""INSERT INTO telegram_user(telegram_userid, first_name, last_name, username) VALUES ({message.from_user.id}, '{message.from_user.first_name}', '{message.from_user.last_name}', '{message.from_user.username}')"""
                         cursor.execute(add_telegram_user)
                 except sqlite3.IntegrityError:
@@ -41,6 +44,9 @@ def main():
                     try:
                         with sqlite3.connect(db_path) as db:
                             cursor = db.cursor()
+                            db.execute('SET NAMES utf8;')
+                            db.execute('SET CHARACTER SET utf8;')
+                            db.execute('SET character_set_connection=utf8;')
                             add_vk_group = f"""INSERT INTO vk_user_group(FK_telegram_userid, vk_group_name, vk_group_url) VALUES ({message.from_user.id}, '{vk_group_name}', '{vk_group_url}')"""
                             cursor.execute(add_vk_group)
                     except sqlite3.IntegrityError:
@@ -76,6 +82,9 @@ def main():
 
         with sqlite3.connect(db_path) as db:
             cursor = db.cursor()
+            db.execute('SET NAMES utf8;')
+            db.execute('SET CHARACTER SET utf8;')
+            db.execute('SET character_set_connection=utf8;')
             vk_user_groups = f"""SELECT vk_group_name FROM vk_user_group WHERE FK_telegram_userid={message.from_user.id}"""
             cursor.execute(vk_user_groups)
             vk_user_groups = cursor.fetchall()

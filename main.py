@@ -14,7 +14,7 @@ vk_api_token = os.environ.get('vk_api_token')
 bot = telebot.TeleBot(telegram_api_token)
 session = vk_api.VkApi(token=vk_api_token)
 vk_last_post_dict_id = {}
-
+db_path = 'db/database.db'
 def main():
 
     @bot.message_handler(commands=['start', 'go'])
@@ -31,7 +31,7 @@ def main():
                 vk_group_url = message.text
                 vk_group_name = vk_group_url.split('/')[3]
                 try:
-                    with sqlite3.connect('db/database.db') as db:
+                    with sqlite3.connect(db_path) as db:
                         cursor = db.cursor()
                         add_telegram_user = f"""INSERT INTO telegram_user(telegram_userid, first_name, last_name, username) VALUES ({message.from_user.id}, '{message.from_user.first_name}', '{message.from_user.last_name}', '{message.from_user.username}')"""
                         cursor.execute(add_telegram_user)
@@ -39,7 +39,7 @@ def main():
                     pass
                 finally:
                     try:
-                        with sqlite3.connect('db/database.db') as db:
+                        with sqlite3.connect(db_path) as db:
                             cursor = db.cursor()
                             add_vk_group = f"""INSERT INTO vk_user_group(FK_telegram_userid, vk_group_name, vk_group_url) VALUES ({message.from_user.id}, '{vk_group_name}', '{vk_group_url}')"""
                             cursor.execute(add_vk_group)
@@ -74,7 +74,7 @@ def main():
     def vk_get_last_post(message, get_last_post_id=False, parse=True):
         vk_posts = {}
 
-        with sqlite3.connect('db/database.db') as db:
+        with sqlite3.connect(db_path) as db:
             cursor = db.cursor()
             vk_user_groups = f"""SELECT vk_group_name FROM vk_user_group WHERE FK_telegram_userid={message.from_user.id}"""
             cursor.execute(vk_user_groups)

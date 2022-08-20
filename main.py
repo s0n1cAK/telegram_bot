@@ -17,15 +17,15 @@ vk_api_token = os.environ.get('vk_api_token')
 bot = telebot.TeleBot(telegram_api_token)
 session = vk_api.VkApi(token=vk_api_token)
 vk_last_post_dict_id = {}
-db_path = './db/database.db'
-
+bot_folder = ''
+db_path = f'.{bot_folder}/db/database.db'
 
 # репосты
 # музыка (блок аудио)
 # Удаление групп test
 # добавить к записям наз группы test
 # кнопки
-# хелп по командам 
+# хелп по командам
 def create_db():
     with sqlite3.connect(db_path) as db:
         cursor = db.cursor()
@@ -73,8 +73,8 @@ def next_action_bot(message, response_text, next_func):
 
 
 def main():
-    if not os.path.exists('temp'):
-        os.makedirs('temp')
+    if not os.path.exists(f'{bot_folder}/temp'):
+        os.makedirs(f'{bot_folder}/temp')
 
     if os.path.exists(db_path):
         pass
@@ -177,7 +177,7 @@ def main():
                 vk_last_post_dict_id[vk_user_group] = vk_last_post['id']
             if parse:
                 vk_posts[vk_user_group] = vk_last_post
-        time.sleep(5)
+        time.sleep(60)
         return vk_posts
 
     def vk_parse_group_posts(message):
@@ -221,7 +221,7 @@ def main():
                         vk_videos = vk_videos['items']
                         for vk_video in vk_videos:
                             vk_video_url = vk_video['player']
-                            ydl_opts = {"outtmpl": f"temp/{vk_user_group}/{vk_video['id']}-{vk_video['date']}"}
+                            ydl_opts = {"outtmpl": f"{bot_folder}/temp/{vk_user_group}/{vk_video['id']}-{vk_video['date']}"}
                             if os.path.exists(ydl_opts['outtmpl']):
                                 pass
                             else:
@@ -244,7 +244,7 @@ def main():
                     elif contains_video:
                         bot.send_media_group(message.chat.id, all_videos)
                         vk_last_post_dict_id[vk_user_group] = vk_group_post['id']
-                        videos = glob.glob(f'temp/{vk_user_group}/*')
+                        videos = glob.glob(f'{bot_folder}/temp/{vk_user_group}/*')
                         for video in videos:
                             os.remove(video)
 

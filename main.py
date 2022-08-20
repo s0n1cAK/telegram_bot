@@ -146,6 +146,7 @@ def main():
         for id, chat_group in enumerate(chat_groups):
             text = text + f'{id}. {chat_group[0]}\n'
             id_group[str(id)] = chat_group[0]
+        bot.send_message(message.chat.id, f'{text}')
         parse_source(message)
 
     @bot.message_handler(commands=['vk_delete_group'])

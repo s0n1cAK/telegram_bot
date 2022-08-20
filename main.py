@@ -22,11 +22,10 @@ db_path = f'{bot_folder}/db/database.db'
 
 # репосты
 # музыка (блок аудио)
-# Удаление групп test
-# добавить к записям наз группы test
 # кнопки
-# хелп по командам
 # управление из бота, а не из группы
+
+
 def create_db():
     with sqlite3.connect(db_path) as db:
         cursor = db.cursor()
@@ -64,7 +63,7 @@ def sql_query(query, chat_id='', error_message=''):
         if error_message or chat_id:
             pass
         else:
-            bot.send_message(chat_id, f'Хочешь добавить группу вк? (Да/Нет)')
+            bot.send_message(chat_id, f'{error_message}')
 
 
 def next_action_bot(message, response_text, next_func):
@@ -100,33 +99,33 @@ def main():
 
     @bot.message_handler(commands=['save_vk_group'])
     def save_vk_group(message):
-        try:
-            if re.match('https://vk.com/([а-яА-Яa-zA-Z0-9]{1,9999}[^:])', message.text) != None \
-                    and requests.get(url=message.text).status_code == 200:
-                vk_group_url = message.text
-                vk_group_name = vk_group_url.split('/')[3]
-                session.method('wall.get', {'domain': f'{vk_group_name}'})
-                sql_query(
-                    query=f"""INSERT INTO vk_user_group(FK_telegram_chatid, vk_group_name, vk_group_url) 
-                    VALUES (
-                        {message.chat.id},
-                        '{vk_group_name}',
-                        '{vk_group_url}')
-                    """,
-                    chat_id=message.chat.id,
-                    error_message='Эта группа уже добавлена')
-                next_action_bot(message=message, response_text='Будем ещё группы добавлять? (Да/Нет)',
-                                next_func=vk_add_more_group)
-            else:
-                raise TypeError
-        except (TypeError, vk_api.exceptions.ApiError):
-            next_action_bot(message=message,
-                            response_text='Введена несуществующая или закрытая группа.\nБудем ещё группы добавлять? (Да/Нет)',
-                            next_func=vk_add_more_group)
+        groups = message.text.split(' ')
+        for group in groups:
+            try:
+                if re.match('https://vk.com/([а-яА-Яa-zA-Z0-9]{1,9999}[^:])', group) != None \
+                        and requests.get(url=group).status_code == 200:
+                    vk_group_url = group
+                    vk_group_name = vk_group_url.split('/')[3]
+                    session.method('wall.get', {'domain': f'{vk_group_name}'})
+                    sql_query(
+                        query=f"""INSERT INTO vk_user_group(FK_telegram_chatid, vk_group_name, vk_group_url) 
+                        VALUES (
+                            {message.chat.id},
+                            '{vk_group_name}',
+                            '{vk_group_url}')""",
+                        chat_id=message.chat.id,
+                        error_message=f'{group} уже добавлена')
+                else:
+                    raise TypeError
+            except (TypeError, vk_api.exceptions.ApiError):
+                bot.send_message(message.chat.id, f'Группы {group} несуществует или является закрытой.')
+
+        next_action_bot(message=message, response_text='Будем ещё группы добавлять? (Да/Нет)',
+                        next_func=vk_add_more_group)
 
     @bot.message_handler(commands=['vk_add_more_group'])
     def vk_add_more_group(message):
-        if message.content_type == 'text' and message.text.lower() == 'да':
+        if message.content_type == 'text' and (message.text.lower() == 'да' or message.text.lower() == '/vk_add_more_group'):
             next_action_bot(message=message,
                             response_text='Вводи ссылку',
                             next_func=save_vk_group)
@@ -140,14 +139,14 @@ def main():
 
     @bot.message_handler(commands=['list_groups'])
     def list_groups(message):
-        text = 'Выберите группу для удаления:\n'
+        text = 'Добавленные группы:\n'
         id_group = {}
         chat_groups = sql_query(
             query=f'''SELECT vk_group_name FROM vk_user_group WHERE FK_telegram_chatid={message.chat.id}''')
         for id, chat_group in enumerate(chat_groups):
             text = text + f'{id}. {chat_group[0]}\n'
             id_group[str(id)] = chat_group[0]
-        bot.send_message(message.chat.id, f'{text}\nТак же можно написать exit/cancel для отмены')
+        parse_source(message)
 
     @bot.message_handler(commands=['vk_delete_group'])
     def vk_delete_group(message):
@@ -190,7 +189,7 @@ def main():
                 vk_last_post_dict_id[vk_user_group] = vk_last_post['id']
             if parse:
                 vk_posts[vk_user_group] = vk_last_post
-#        time.sleep(60)
+        #        time.sleep(60)
         return vk_posts
 
     def vk_parse_group_posts(message, parse_is_on):
@@ -210,7 +209,8 @@ def main():
                     if attachment['type'] == 'photo':
                         photos = attachment['photo']['sizes']
                         photos = sorted(photos, key=lambda d: d['width'])
-                        all_photos.append(InputMediaPhoto(photos[-1]['url'], caption=f'{vk_group_post["text"]}\n\n{vk_user_group}')) \
+                        all_photos.append(
+                            InputMediaPhoto(photos[-1]['url'], caption=f'{vk_group_post["text"]}\n\n{vk_user_group}')) \
                             if len(all_photos) == 0 \
                             else all_photos.append(InputMediaPhoto(photos[-1]['url']))
                         contains_photo = True
@@ -221,7 +221,8 @@ def main():
                             photos = attachment['link']['photo']['sizes']
                             photos = sorted(photos, key=lambda d: d['width'])
                             all_links.append(
-                                InputMediaPhoto(photos[-1]['url'], caption=f'{vk_group_post["text"]}\n{vk_link_url}\n\n{vk_user_group}')) \
+                                InputMediaPhoto(photos[-1]['url'],
+                                                caption=f'{vk_group_post["text"]}\n{vk_link_url}\n\n{vk_user_group}')) \
                                 if len(all_links) == 0 \
                                 else all_links.append(InputMediaPhoto(photos[-1]['url']))
                         contains_link = True
@@ -234,7 +235,8 @@ def main():
                         vk_videos = vk_videos['items']
                         for vk_video in vk_videos:
                             vk_video_url = vk_video['player']
-                            ydl_opts = {"outtmpl": f"{bot_folder}/temp/{vk_user_group}/{vk_video['id']}-{vk_video['date']}"}
+                            ydl_opts = {
+                                "outtmpl": f"{bot_folder}/temp/{vk_user_group}/{vk_video['id']}-{vk_video['date']}"}
                             if os.path.exists(ydl_opts['outtmpl']):
                                 pass
                             else:
@@ -244,7 +246,8 @@ def main():
                                     if video_duration < 600:
                                         ydl.download([vk_video_url])
                                         with open(ydl_opts['outtmpl'], "rb") as video:
-                                            all_videos.append(InputMediaVideo(media=video.read(), caption=f"{vk_group_post['text']}\n\n{vk_user_group}"))  # тернарное выражение для первого ролика
+                                            all_videos.append(InputMediaVideo(media=video.read(),
+                                                                              caption=f"{vk_group_post['text']}\n\n{vk_user_group}"))  # тернарное выражение для первого ролика
                                         contains_video = True
 
                 if vk_last_post_dict_id[vk_user_group] < vk_group_post['id']:
@@ -274,7 +277,6 @@ def main():
             vk_parse_group_posts(message, parse_is_on)
 
     bot.polling(none_stop=True)
-
 
 if __name__ == "__main__":
     main()

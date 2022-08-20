@@ -26,6 +26,7 @@ db_path = f'.{bot_folder}/db/database.db'
 # добавить к записям наз группы test
 # кнопки
 # хелп по командам
+# управление из бота, а не из группы
 def create_db():
     with sqlite3.connect(db_path) as db:
         cursor = db.cursor()
@@ -120,7 +121,7 @@ def main():
                 raise TypeError
         except (TypeError, vk_api.exceptions.ApiError):
             next_action_bot(message=message,
-                            response_text='Введена несуществующая или закратая группа.\nБудем ещё группы добавлять? (Да/Нет)',
+                            response_text='Введена несуществующая или закрытая группа.\nБудем ещё группы добавлять? (Да/Нет)',
                             next_func=vk_add_more_group)
 
     @bot.message_handler(commands=['vk_add_more_group'])
@@ -130,13 +131,14 @@ def main():
                             response_text='Вводи ссылку',
                             next_func=save_vk_group)
         elif message.content_type == 'text' and message.text.lower() == 'нет':
+            bot.send_message(message.chat.id, 'Ок, начинаю смотреть за новыми постами')
             parse_source(message)
         else:
             next_action_bot(message=message,
                             response_text='Только да или нет',
                             next_func=vk_add_more_group)
 
-    @bot.message_handler(commands=['vk_delete_group'])
+    @bot.message_handler(commands=[''])
     def vk_list_all_groups(message):
         text = 'Выберите группу для удаления:\n'
         id_group = {}
@@ -149,15 +151,15 @@ def main():
 
         @bot.message_handler(func=lambda message: True)
         def vk_delete_group(message):
-            print(message.text)
-            print(id_group)
             if message.text in id_group.values() or int(message.text) in id_group.keys():
                 group_name = id_group[int(message.text)] if int(message.text) in id_group.keys() else message.text
                 sql_query(
                     query=f'''DELETE FROM vk_user_group WHERE FK_telegram_chatid={message.chat.id} AND vk_group_name="{group_name}"''')
                 bot.send_message(message.chat.id, 'Группа была удаленна')
+                bot.send_message(message.chat.id, 'Ок, начинаю смотреть за новыми постами')
                 parse_source(message)
             elif message.text == 'exit':
+                bot.send_message(message.chat.id, 'Ок, начинаю смотреть за новыми постами')
                 parse_source(message)
             else:
                 next_action_bot(message=message,
@@ -183,7 +185,6 @@ def main():
     def vk_parse_group_posts(message):
         vk_posts = vk_get_last_post(message, get_last_post_id=False, parse=True)
         for vk_user_group, vk_group_post in vk_posts.items():
-            print(vk_group_post)
             if 'attachments' in vk_group_post:
                 all_photos = []
                 all_videos = []
@@ -254,7 +255,6 @@ def main():
                     vk_last_post_dict_id[vk_user_group] = vk_group_post['id']
 
     def parse_source(message):
-        bot.send_message(message.chat.id, 'Ок, начинаю смотреть за новыми постами')
         vk_get_last_post(message, get_last_post_id=True, parse=False)
         while True:
             vk_parse_group_posts(message)

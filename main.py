@@ -138,6 +138,17 @@ def main():
                             response_text='Только да или нет',
                             next_func=vk_add_more_group)
 
+    @bot.message_handler(commands=['list_groups'])
+    def list_groups(message):
+        text = 'Выберите группу для удаления:\n'
+        id_group = {}
+        chat_groups = sql_query(
+            query=f'''SELECT vk_group_name FROM vk_user_group WHERE FK_telegram_chatid={message.chat.id}''')
+        for id, chat_group in enumerate(chat_groups):
+            text = text + f'{id}. {chat_group[0]}\n'
+            id_group[str(id)] = chat_group[0]
+        bot.send_message(message.chat.id, f'{text}\nТак же можно написать exit/cancel для отмены')
+
     @bot.message_handler(commands=['vk_delete_group'])
     def vk_delete_group(message):
         text = 'Выберите группу для удаления:\n'

@@ -17,8 +17,8 @@ vk_api_token = os.environ.get('vk_api_token')
 bot = telebot.TeleBot(telegram_api_token)
 session = vk_api.VkApi(token=vk_api_token)
 vk_last_post_dict_id = {}
-bot_folder = ''
-db_path = f'.{bot_folder}/db/database.db'
+bot_folder = '/home/alex/python_project/telegram_bot'
+db_path = f'{bot_folder}/db/database.db'
 
 # репосты
 # музыка (блок аудио)
@@ -138,27 +138,27 @@ def main():
                             response_text='Только да или нет',
                             next_func=vk_add_more_group)
 
-    @bot.message_handler(commands=[''])
-    def vk_list_all_groups(message):
+    @bot.message_handler(commands=['vk_delete_group'])
+    def vk_delete_group(message):
         text = 'Выберите группу для удаления:\n'
         id_group = {}
         chat_groups = sql_query(
             query=f'''SELECT vk_group_name FROM vk_user_group WHERE FK_telegram_chatid={message.chat.id}''')
         for id, chat_group in enumerate(chat_groups):
             text = text + f'{id}. {chat_group[0]}\n'
-            id_group[id] = chat_group[0]
-        bot.send_message(message.chat.id, text)
+            id_group[str(id)] = chat_group[0]
+        bot.send_message(message.chat.id, f'{text}\nТак же можно написать exit/cancel для отмены')
 
         @bot.message_handler(func=lambda message: True)
-        def vk_delete_group(message):
-            if message.text in id_group.values() or int(message.text) in id_group.keys():
-                group_name = id_group[int(message.text)] if int(message.text) in id_group.keys() else message.text
+        def temp_vk_delete_group(message):
+            if message.text in id_group.values() or message.text in id_group.keys():
+                group_name = id_group[message.text] if message.text in id_group.keys() else message.text
                 sql_query(
                     query=f'''DELETE FROM vk_user_group WHERE FK_telegram_chatid={message.chat.id} AND vk_group_name="{group_name}"''')
                 bot.send_message(message.chat.id, 'Группа была удаленна')
                 bot.send_message(message.chat.id, 'Ок, начинаю смотреть за новыми постами')
                 parse_source(message)
-            elif message.text == 'exit':
+            elif message.text == 'exit' or message.text == 'cancel':
                 bot.send_message(message.chat.id, 'Ок, начинаю смотреть за новыми постами')
                 parse_source(message)
             else:
@@ -179,12 +179,13 @@ def main():
                 vk_last_post_dict_id[vk_user_group] = vk_last_post['id']
             if parse:
                 vk_posts[vk_user_group] = vk_last_post
-        time.sleep(60)
+#        time.sleep(60)
         return vk_posts
 
-    def vk_parse_group_posts(message):
+    def vk_parse_group_posts(message, parse_is_on):
         vk_posts = vk_get_last_post(message, get_last_post_id=False, parse=True)
         for vk_user_group, vk_group_post in vk_posts.items():
+            print(vk_group_post)
             if 'attachments' in vk_group_post:
                 all_photos = []
                 all_videos = []
@@ -255,11 +256,13 @@ def main():
                     vk_last_post_dict_id[vk_user_group] = vk_group_post['id']
 
     def parse_source(message):
+        parse_is_on = False
         vk_get_last_post(message, get_last_post_id=True, parse=False)
-        while True:
-            vk_parse_group_posts(message)
+        while parse_is_on == False:
+            parse_is_on = True
+            vk_parse_group_posts(message, parse_is_on)
 
-    bot.polling()
+    bot.polling(none_stop=True)
 
 
 if __name__ == "__main__":

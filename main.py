@@ -20,6 +20,7 @@ vk_last_post_dict_id = {}
 bot_folder = '/home/alex/python_project/telegram_bot'
 db_path = f'{bot_folder}/db/database.db'
 
+
 # репосты
 # музыка (блок аудио)
 # кнопки
@@ -125,7 +126,8 @@ def main():
 
     @bot.message_handler(commands=['vk_add_more_group'])
     def vk_add_more_group(message):
-        if message.content_type == 'text' and (message.text.lower() == 'да' or message.text.lower() == '/vk_add_more_group'):
+        if message.content_type == 'text' and (
+                message.text.lower() == 'да' or message.text.lower() == '/vk_add_more_group'):
             next_action_bot(message=message,
                             response_text='Вводи ссылку',
                             next_func=save_vk_group)
@@ -182,6 +184,7 @@ def main():
         vk_user_groups = sql_query(
             query=f"""SELECT vk_group_name FROM vk_user_group WHERE FK_telegram_chatid={message.chat.id}""")
         for vk_user_group in vk_user_groups:
+            time.sleep(3)
             vk_user_group = vk_user_group[0]
             vk_last_post = session.method('wall.get', {'domain': f'{vk_user_group}'})
             vk_last_post = vk_last_post['items']
@@ -190,13 +193,11 @@ def main():
                 vk_last_post_dict_id[vk_user_group] = vk_last_post['id']
             if parse:
                 vk_posts[vk_user_group] = vk_last_post
-        #        time.sleep(60)
         return vk_posts
 
     def vk_parse_group_posts(message, parse_is_on):
         vk_posts = vk_get_last_post(message, get_last_post_id=False, parse=True)
         for vk_user_group, vk_group_post in vk_posts.items():
-            print(vk_group_post)
             if 'attachments' in vk_group_post:
                 all_photos = []
                 all_videos = []
@@ -273,11 +274,13 @@ def main():
     def parse_source(message):
         parse_is_on = False
         vk_get_last_post(message, get_last_post_id=True, parse=False)
-        while parse_is_on == False:
-            parse_is_on = True
-            vk_parse_group_posts(message, parse_is_on)
+        if parse_is_on == False:
+            while True:
+                parse_is_on = True
+                vk_parse_group_posts(message, parse_is_on)
 
     bot.polling(none_stop=True)
+
 
 if __name__ == "__main__":
     main()

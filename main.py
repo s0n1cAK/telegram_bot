@@ -6,51 +6,26 @@ import re
 import vk_api
 import requests
 import sqlite3
-import time
 import os
 import youtube_dl
 import glob
 
-load_dotenv()
 telegram_api_token = os.getenv('telegram_api_token')
-vk_api_token = os.environ.get('vk_api_token')
 bot = telebot.TeleBot(telegram_api_token)
+vk_api_token = os.environ.get('vk_api_token')
 session = vk_api.VkApi(token=vk_api_token)
-vk_last_post_dict_id = {}
+
 bot_folder = '/home/alex/python_project/telegram_bot'
 db_path = f'{bot_folder}/db/database.db'
 
+vk_group_per_id = {}
+load_dotenv()
+init = False
 
 # репосты
 # музыка (блок аудио)
 # кнопки
 # управление из бота, а не из группы
-
-
-def create_db():
-    with sqlite3.connect(db_path) as db:
-        cursor = db.cursor()
-        queries = []
-        query_create_user_table = '''CREATE TABLE "telegram_user" (
-                                        "telegram_chatid"	INTEGER NOT NULL,
-                                        "telegram_userid"	INTEGER NOT NULL,
-                                        "first_name"	TEXT,
-                                        "last_name"	TEXT,
-                                        "username"	TEXT,
-                                        PRIMARY KEY("telegram_chatid")
-                                 )'''
-        queries.append(query_create_user_table)
-        query_create_vk_group_table = '''CREATE TABLE "vk_user_group" (
-                                            "FK_telegram_chatid"    INTEGER NOT NULL,
-                                            "vk_group_name"	TEXT NOT NULL,
-                                            "vk_group_url"	TEXT NOT NULL,
-                                            FOREIGN KEY("FK_telegram_chatid") REFERENCES "telegram_user"("telegram_chatid"),
-                                            PRIMARY KEY("FK_telegram_chatid","vk_group_name")
-                                    )'''
-        queries.append(query_create_vk_group_table)
-        for query in queries:
-            cursor.execute(query)
-
 
 def sql_query(query, chat_id='', error_message=''):
     try:
@@ -73,14 +48,40 @@ def next_action_bot(message, response_text, next_func):
     bot.register_next_step_handler(message, next_func)
 
 
+def vk_get_last_post(vk_user_group, return_id=False):
+    vk_last_post = session.method('wall.get', {'domain': f'{vk_user_group}'})
+    vk_last_post = vk_last_post['items']
+    vk_last_post = sorted(vk_last_post, key=lambda d: d['date'])[-1]
+    if return_id == True:
+        return vk_last_post['id']
+    return vk_last_post
+
+
 def main():
+    active_chat = []
+
     if not os.path.exists(f'{bot_folder}/temp'):
         os.makedirs(f'{bot_folder}/temp')
 
     if os.path.exists(db_path):
         pass
     else:
-        create_db()
+        sql_query(query='''CREATE TABLE "telegram_user" (
+                                        "telegram_chatid"	INTEGER NOT NULL,
+                                        "telegram_userid"	INTEGER NOT NULL,
+                                        "first_name"	TEXT,
+                                        "last_name"	TEXT,
+                                        "username"	TEXT,
+                                        PRIMARY KEY("telegram_chatid")
+                                 )''')
+        sql_query('''CREATE TABLE "vk_user_group" (
+                                            "FK_telegram_chatid"    INTEGER NOT NULL,
+                                            "vk_group_name" TEXT NOT NULL,
+                                            "vk_group_url" TEXT NOT NULL,
+                                            "vk_last_post_id" TEXT NOT NULL,
+                                            FOREIGN KEY("FK_telegram_chatid") REFERENCES "telegram_user"("telegram_chatid"),
+                                            PRIMARY KEY("FK_telegram_chatid","vk_group_name")
+                                    )''')
 
     @bot.message_handler(commands=['start', 'go'])
     def init_user(message):
@@ -107,13 +108,16 @@ def main():
                         and requests.get(url=group).status_code == 200:
                     vk_group_url = group
                     vk_group_name = vk_group_url.split('/')[3]
-                    session.method('wall.get', {'domain': f'{vk_group_name}'})
+                    vk_last_post_id = vk_get_last_post(vk_group_name, return_id=True)
                     sql_query(
-                        query=f"""INSERT INTO vk_user_group(FK_telegram_chatid, vk_group_name, vk_group_url) 
+                        query=f"""INSERT INTO vk_user_group(FK_telegram_chatid, vk_group_name, 
+                        vk_group_url, vk_last_post_id) 
                         VALUES (
                             {message.chat.id},
                             '{vk_group_name}',
-                            '{vk_group_url}')""",
+                            '{vk_group_url}',
+                            '{vk_last_post_id}')
+                            """,
                         chat_id=message.chat.id,
                         error_message=f'{group} уже добавлена')
                 else:
@@ -133,7 +137,8 @@ def main():
                             next_func=save_vk_group)
         elif message.content_type == 'text' and message.text.lower() == 'нет':
             bot.send_message(message.chat.id, 'Ок, начинаю смотреть за новыми постами')
-            parse_source(message)
+            if message.chat.id not in active_chat:
+                parse_source(message)
         else:
             next_action_bot(message=message,
                             response_text='Только да или нет',
@@ -149,7 +154,9 @@ def main():
             text = text + f'{id}. {chat_group[0]}\n'
             id_group[str(id)] = chat_group[0]
         bot.send_message(message.chat.id, f'{text}')
-        parse_source(message)
+        if message.chat.id not in active_chat:
+            print(1)
+            parse_source(message)
 
     @bot.message_handler(commands=['vk_delete_group'])
     def vk_delete_group(message):
@@ -170,117 +177,112 @@ def main():
                     query=f'''DELETE FROM vk_user_group WHERE FK_telegram_chatid={message.chat.id} AND vk_group_name="{group_name}"''')
                 bot.send_message(message.chat.id, 'Группа была удаленна')
                 bot.send_message(message.chat.id, 'Ок, начинаю смотреть за новыми постами')
-                parse_source(message)
+                if message.chat.id not in active_chat:
+                    parse_source(message)
             elif message.text == 'exit' or message.text == 'cancel':
                 bot.send_message(message.chat.id, 'Ок, начинаю смотреть за новыми постами')
-                parse_source(message)
+                if message.chat.id not in active_chat:
+                    parse_source(message)
             else:
                 next_action_bot(message=message,
                                 response_text='Вы ввели группу не из списка',
                                 next_func=vk_delete_group)
 
-    def vk_get_last_post(message, get_last_post_id=False, parse=True):
-        vk_posts = {}
-        vk_user_groups = sql_query(
-            query=f"""SELECT vk_group_name FROM vk_user_group WHERE FK_telegram_chatid={message.chat.id}""")
-        for vk_user_group in vk_user_groups:
-            time.sleep(3)
-            vk_user_group = vk_user_group[0]
-            vk_last_post = session.method('wall.get', {'domain': f'{vk_user_group}'})
-            vk_last_post = vk_last_post['items']
-            vk_last_post = sorted(vk_last_post, key=lambda d: d['date'])[-1]
-            if get_last_post_id:
-                vk_last_post_dict_id[vk_user_group] = vk_last_post['id']
-            if parse:
-                vk_posts[vk_user_group] = vk_last_post
-        return vk_posts
+    def vk_parse_group_post(vk_group, vk_last_post):
+        if 'attachments' in vk_last_post:
+            all_photos = []
+            all_videos = []
+            all_links = []
+            contains_photo = False
+            contains_video = False
+            contains_link = False
+            attachments_last_post = vk_last_post['attachments']
 
-    def vk_parse_group_posts(message, parse_is_on):
-        vk_posts = vk_get_last_post(message, get_last_post_id=False, parse=True)
-        for vk_user_group, vk_group_post in vk_posts.items():
-            if 'attachments' in vk_group_post:
-                all_photos = []
-                all_videos = []
-                all_links = []
-                contains_photo = False
-                contains_video = False
-                contains_link = False
-                attachments_last_post = vk_group_post['attachments']
+            for attachment in attachments_last_post:
+                if attachment['type'] == 'photo':
+                    photos = attachment['photo']['sizes']
+                    photos = sorted(photos, key=lambda d: d['width'])
+                    all_photos.append(
+                        InputMediaPhoto(photos[-1]['url'], caption=f'{vk_last_post["text"]}\n\n{vk_group}')) \
+                        if len(all_photos) == 0 \
+                        else all_photos.append(InputMediaPhoto(photos[-1]['url']))
+                    contains_photo = True
 
-                for attachment in attachments_last_post:
-                    if attachment['type'] == 'photo':
-                        photos = attachment['photo']['sizes']
+                elif attachment['type'] == 'link':
+                    vk_link_url = attachment['link']['url']
+                    if 'photo' in attachment['link']:
+                        photos = attachment['link']['photo']['sizes']
                         photos = sorted(photos, key=lambda d: d['width'])
-                        all_photos.append(
-                            InputMediaPhoto(photos[-1]['url'], caption=f'{vk_group_post["text"]}\n\n{vk_user_group}')) \
-                            if len(all_photos) == 0 \
-                            else all_photos.append(InputMediaPhoto(photos[-1]['url']))
-                        contains_photo = True
+                        all_links.append(
+                            InputMediaPhoto(photos[-1]['url'],
+                                            caption=f'{vk_last_post["text"]}\n{vk_link_url}\n\n{vk_group}')) \
+                            if len(all_links) == 0 \
+                            else all_links.append(InputMediaPhoto(photos[-1]['url']))
+                    contains_link = True
 
-                    elif attachment['type'] == 'link':
-                        vk_link_url = attachment['link']['url']
-                        if 'photo' in attachment['link']:
-                            photos = attachment['link']['photo']['sizes']
-                            photos = sorted(photos, key=lambda d: d['width'])
-                            all_links.append(
-                                InputMediaPhoto(photos[-1]['url'],
-                                                caption=f'{vk_group_post["text"]}\n{vk_link_url}\n\n{vk_user_group}')) \
-                                if len(all_links) == 0 \
-                                else all_links.append(InputMediaPhoto(photos[-1]['url']))
-                        contains_link = True
+                elif attachment['type'] == 'video':
+                    owner_id = attachment['video']['owner_id']
+                    videos = attachment['video']['id']
+                    access_key = attachment['video']['access_key']
+                    vk_videos = session.method('video.get', {'videos': f'{owner_id}_{videos}_{access_key}'})
+                    vk_videos = vk_videos['items']
+                    for vk_video in vk_videos:
+                        vk_video_url = vk_video['player']
+                        ydl_opts = {
+                            "outtmpl": f"{bot_folder}/temp/{vk_group}/{vk_video['id']}-{vk_video['date']}"}
+                        if os.path.exists(ydl_opts['outtmpl']):
+                            pass
+                        else:
+                            with youtube_dl.YoutubeDL(ydl_opts) as ydl:
+                                video_info = ydl.extract_info(vk_video_url, download=False)
+                                video_duration = video_info['duration']
+                                if video_duration < 600:
+                                    ydl.download([vk_video_url])
+                                    with open(ydl_opts['outtmpl'], "rb") as video:
+                                        all_videos.append(InputMediaVideo(media=video.read(),
+                                                                          caption=f"{vk_last_post['text']}\n\n{vk_group}"))  # тернарное выражение для первого ролика
+                                    contains_video = True
 
-                    elif attachment['type'] == 'video':
-                        owner_id = attachment['video']['owner_id']
-                        videos = attachment['video']['id']
-                        access_key = attachment['video']['access_key']
-                        vk_videos = session.method('video.get', {'videos': f'{owner_id}_{videos}_{access_key}'})
-                        vk_videos = vk_videos['items']
-                        for vk_video in vk_videos:
-                            vk_video_url = vk_video['player']
-                            ydl_opts = {
-                                "outtmpl": f"{bot_folder}/temp/{vk_user_group}/{vk_video['id']}-{vk_video['date']}"}
-                            if os.path.exists(ydl_opts['outtmpl']):
-                                pass
-                            else:
-                                with youtube_dl.YoutubeDL(ydl_opts) as ydl:
-                                    video_info = ydl.extract_info(vk_video_url, download=False)
-                                    video_duration = video_info['duration']
-                                    if video_duration < 600:
-                                        ydl.download([vk_video_url])
-                                        with open(ydl_opts['outtmpl'], "rb") as video:
-                                            all_videos.append(InputMediaVideo(media=video.read(),
-                                                                              caption=f"{vk_group_post['text']}\n\n{vk_user_group}"))  # тернарное выражение для первого ролика
-                                        contains_video = True
+                if contains_photo:
+                    return all_photos
+                elif contains_link:
+                    return all_links
+                elif contains_video:
+                    videos = glob.glob(f'{bot_folder}/temp/{vk_group}/*')
+                    for video in videos:
+                        os.remove(video)
+                    return all_videos
 
-                if vk_last_post_dict_id[vk_user_group] < vk_group_post['id']:
-                    if contains_photo:
-                        bot.send_media_group(message.chat.id, all_photos)
-                        vk_last_post_dict_id[vk_user_group] = vk_group_post['id']
-                    elif contains_link:
-                        bot.send_media_group(message.chat.id, all_links)
-                        vk_last_post_dict_id[vk_user_group] = vk_group_post['id']
-                    elif contains_video:
-                        bot.send_media_group(message.chat.id, all_videos)
-                        vk_last_post_dict_id[vk_user_group] = vk_group_post['id']
-                        videos = glob.glob(f'{bot_folder}/temp/{vk_user_group}/*')
-                        for video in videos:
-                            os.remove(video)
+        else:
+            return str(vk_last_post["text"])
 
-            else:
-                if vk_last_post_dict_id[vk_user_group] < vk_group_post['id']:
-                    bot.send_message(message.chat.id, f'{vk_group_post["text"]}')
-                    vk_last_post_dict_id[vk_user_group] = vk_group_post['id']
 
     def parse_source(message):
-        parse_is_on = False
-        vk_get_last_post(message, get_last_post_id=True, parse=False)
-        if parse_is_on == False:
-            while True:
-                parse_is_on = True
-                vk_parse_group_posts(message, parse_is_on)
+        global init
+        if init == False:
+            init = True
+            while init == True:
+                new_post_groups = sql_query(
+                    query=f'''SELECT vk_group_name, vk_last_post_id FROM vk_user_group WHERE FK_telegram_chatid={message.chat.id}''')
+                for new_post_group in new_post_groups:
+                    vk_group_name = new_post_group[0]
+                    vk_post_id = int(new_post_group[1])
+                    vk_last_post = vk_get_last_post(vk_group_name)
+                    if int(vk_last_post['id']) > vk_post_id:
+                        sql_query(
+                            f'''UPDATE vk_user_group SET vk_last_post_id = "{vk_last_post['id']}" WHERE vk_group_name = "{vk_group_name}"''')
+                        vk_post = vk_parse_group_post(vk_group_name, vk_last_post)
+                        if isinstance(vk_post, str):
+                            bot.send_message(message.chat.id, vk_post)
+                        else:
+                            bot.send_media_group(message.chat.id, vk_post)
+                    else:
+                        pass
+
+        elif init == True:
+            pass
 
     bot.polling(none_stop=True)
-
 
 if __name__ == "__main__":
     main()

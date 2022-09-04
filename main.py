@@ -9,17 +9,18 @@ import sqlite3
 import os
 import youtube_dl
 import glob
+import time
 
 telegram_api_token = os.getenv('telegram_api_token')
 bot = telebot.TeleBot(telegram_api_token)
 vk_api_token = os.environ.get('vk_api_token')
 session = vk_api.VkApi(token=vk_api_token)
 
-bot_folder = '/home/alex/python_project/telegram_bot'
+bot_folder = '/app'
 db_path = f'{bot_folder}/db/database.db'
 
 vk_group_per_id = {}
-load_dotenv()
+load_dotenv(dotenv_path=f'{bot_folder}/.env')
 init = False
 
 # репосты
@@ -40,6 +41,31 @@ def sql_query(query, chat_id='', error_message=''):
             pass
         else:
             bot.send_message(chat_id, f'{error_message}')
+
+
+def create_db():
+    with sqlite3.connect(db_path) as db:
+        cursor = db.cursor()
+        queries = []
+        query_create_user_table = '''CREATE TABLE "telegram_user" (
+                                        "telegram_chatid"	INTEGER NOT NULL,
+                                        "telegram_userid"	INTEGER NOT NULL,
+                                        "first_name"	TEXT,
+                                        "last_name"	TEXT,
+                                        "username"	TEXT,
+                                        PRIMARY KEY("telegram_chatid")
+                                 )'''
+        queries.append(query_create_user_table)
+        query_create_vk_group_table = '''CREATE TABLE "vk_user_group" (
+                                            "FK_telegram_chatid"    INTEGER NOT NULL,
+                                            "vk_group_name"	TEXT NOT NULL,
+                                            "vk_group_url"	TEXT NOT NULL,
+                                            FOREIGN KEY("FK_telegram_chatid") REFERENCES "telegram_user"("telegram_chatid"),
+                                            PRIMARY KEY("FK_telegram_chatid","vk_group_name")
+                                    )'''
+        queries.append(query_create_vk_group_table)
+        for query in queries:
+            cursor.execute(query)
 
 
 def next_action_bot(message, response_text, next_func):
@@ -66,22 +92,7 @@ def main():
     if os.path.exists(db_path):
         pass
     else:
-        sql_query(query='''CREATE TABLE "telegram_user" (
-                                        "telegram_chatid"	INTEGER NOT NULL,
-                                        "telegram_userid"	INTEGER NOT NULL,
-                                        "first_name"	TEXT,
-                                        "last_name"	TEXT,
-                                        "username"	TEXT,
-                                        PRIMARY KEY("telegram_chatid")
-                                 )''')
-        sql_query('''CREATE TABLE "vk_user_group" (
-                                            "FK_telegram_chatid"    INTEGER NOT NULL,
-                                            "vk_group_name" TEXT NOT NULL,
-                                            "vk_group_url" TEXT NOT NULL,
-                                            "vk_last_post_id" TEXT NOT NULL,
-                                            FOREIGN KEY("FK_telegram_chatid") REFERENCES "telegram_user"("telegram_chatid"),
-                                            PRIMARY KEY("FK_telegram_chatid","vk_group_name")
-                                    )''')
+        create_db()
 
     @bot.message_handler(commands=['start', 'go'])
     def init_user(message):
@@ -262,6 +273,7 @@ def main():
         if init == False:
             init = True
             while init == True:
+                time.sleep(30)
                 new_post_groups = sql_query(
                     query=f'''SELECT vk_group_name, vk_last_post_id FROM vk_user_group WHERE FK_telegram_chatid={message.chat.id}''')
                 for new_post_group in new_post_groups:

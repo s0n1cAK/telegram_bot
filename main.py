@@ -10,6 +10,7 @@ import os
 import youtube_dl
 import glob
 import time
+load_dotenv()
 
 telegram_api_token = os.getenv('telegram_api_token')
 bot = telebot.TeleBot(telegram_api_token)
@@ -20,7 +21,6 @@ bot_folder = '/app'
 db_path = f'{bot_folder}/db/database.db'
 
 vk_group_per_id = {}
-load_dotenv(dotenv_path=f'{bot_folder}/.env')
 init = False
 
 # репосты
@@ -60,6 +60,7 @@ def create_db():
                                             "FK_telegram_chatid"    INTEGER NOT NULL,
                                             "vk_group_name"	TEXT NOT NULL,
                                             "vk_group_url"	TEXT NOT NULL,
+                                            "vk_last_post_id" TEXT NOT NULL,
                                             FOREIGN KEY("FK_telegram_chatid") REFERENCES "telegram_user"("telegram_chatid"),
                                             PRIMARY KEY("FK_telegram_chatid","vk_group_name")
                                     )'''
